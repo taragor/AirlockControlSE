@@ -89,7 +89,7 @@ namespace IngameScript
             // can be removed if not needed.
         }
 
-        private class Airlock
+        private class Airlock : Program
         {
             private string m_name;
             private PressureStatus m_innerPressure;
@@ -101,7 +101,7 @@ namespace IngameScript
 
             }
 
-            private class PressureStatus : MyGridProgram
+            private class PressureStatus : Program
             {
                 private List<IMyAirVent> m_airVents; 
                 PressureStatus(string groupName)
