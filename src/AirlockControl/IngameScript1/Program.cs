@@ -42,6 +42,13 @@ namespace IngameScript
         //
         // to learn more about ingame scripts.
 
+        //CONSTANTS:
+
+        private const string groupPrefex = "AAL";
+        private const string innerPostfix = "inner";
+        private const string outerPostfix = "outer";
+        private const string controlPostfix = "";
+
         public Program()
         {
             // The constructor, called only once every session and
@@ -54,6 +61,9 @@ namespace IngameScript
             // It's recommended to set Runtime.UpdateFrequency 
             // here, which will allow your script to run itself without a 
             // timer block.
+
+            //CONSTANTS
+            
         }
 
         public void Save()
@@ -77,6 +87,30 @@ namespace IngameScript
             // 
             // The method itself is required, but the arguments above
             // can be removed if not needed.
+        }
+
+        private class Airlock
+        {
+            private string m_name;
+            private PressureStatus m_innerPressure;
+            private PressureStatus m_outerPressure;
+            private PressureStatus m_airLockPressure;
+            Airlock(string name)
+            {
+                m_name = name;
+
+            }
+
+            private class PressureStatus : MyGridProgram
+            {
+                private List<IMyAirVent> m_airVents; 
+                PressureStatus(string groupName)
+                {
+                    GridTerminalSystem.GetBlockGroupWithName(groupName).GetBlocksOfType<IMyAirVent>(m_airVents);
+                    
+                    
+                }
+            }
         }
     }
 }
