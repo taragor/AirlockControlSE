@@ -87,11 +87,13 @@ namespace IngameScript
             // 
             // The method itself is required, but the arguments above
             // can be removed if not needed.
+            Airlock i_airLock = new Airlock(argument);
+            Echo(i_airLock.PressureStates());
         }
 
-        private class Airlock : Program
+        private class Airlock : MyGridProgram
         {
-            enum State {openOuter, openInner};
+            private enum State {openOuter, openInner};
 
             private State m_state;
             private string m_name;
@@ -99,22 +101,54 @@ namespace IngameScript
             private PressureStatus m_outerPressure;
             private PressureStatus m_airLockPressure;
 
-            Airlock(string name)
+            public Airlock(string name)
             {
                 m_name = name;
-                m_state = State.openOuter;
+                m_state = State.openInner;
                 m_innerPressure = new PressureStatus(groupPrefix + ":" + name + " " + innerPostfix);
                 m_outerPressure = new PressureStatus(groupPrefix + ":" + name + " " + outerPostfix);
                 m_airLockPressure = new PressureStatus(groupPrefix + ":" + name);
             }
 
-            private class PressureStatus : Program
+            public String PressureStates()
+            {
+                String Outstring, InnerPressureLevel, OuterPressureLevel, ControlPressureLevel;
+                float pressure = 0;
+                if (m_innerPressure.GetOxygenLevel(ref pressure))
+                {
+                    Outstring = "InnerPressureLevel: OK:" + pressure.ToString();
+                }
+                else
+                {
+                    Outstring = "InnerPressureLevel: ERR:" + pressure.ToString();
+                }
+
+                if (m_airLockPressure.GetOxygenLevel(ref pressure))
+                {
+                    Outstring +=  "\nAirLockPressureLevel: OK:" + pressure.ToString();
+                }
+                else
+                {
+                    Outstring += "\nAirLockPressureLevel: ERR:" + pressure.ToString();
+                }
+
+                if (m_outerPressure.GetOxygenLevel(ref pressure))
+                {
+                    Outstring += "\nOuterPressureLevel: OK:" + pressure.ToString();
+                }
+                else
+                {
+                    Outstring += "\nOuterPressureLevel: ERR:" + pressure.ToString();
+                }
+                return Outstring;
+            }
+
+            private class PressureStatus : MyGridProgram
             {
                 private List<IMyAirVent> m_airVents;
                 public PressureStatus(string groupName)
                 {
                     GridTerminalSystem.GetBlockGroupWithName(groupName).GetBlocksOfType<IMyAirVent>(m_airVents);
-
                 }
 
                 public bool GetOxygenLevel(ref float pressure)
