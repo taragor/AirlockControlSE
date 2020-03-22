@@ -112,7 +112,7 @@ namespace IngameScript
 
             public String PressureStates()
             {
-                String Outstring, InnerPressureLevel, OuterPressureLevel, ControlPressureLevel;
+                String Outstring;
                 float pressure = 0;
                 if (m_innerPressure.GetOxygenLevel(ref pressure))
                 {
@@ -148,6 +148,7 @@ namespace IngameScript
                 private List<IMyAirVent> m_airVents;
                 public PressureStatus(string groupName)
                 {
+                    m_airVents = new List<IMyAirVent>();
                     GridTerminalSystem.GetBlockGroupWithName(groupName).GetBlocksOfType<IMyAirVent>(m_airVents);
                 }
 
