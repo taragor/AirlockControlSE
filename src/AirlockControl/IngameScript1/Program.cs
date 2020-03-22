@@ -44,7 +44,7 @@ namespace IngameScript
 
         //CONSTANTS:
 
-        private const string groupPrefex = "AAL";
+        private const string groupPrefix = "AAL";
         private const string innerPostfix = "inner";
         private const string outerPostfix = "outer";
         private const string controlPostfix = "";
@@ -91,20 +91,27 @@ namespace IngameScript
 
         private class Airlock : Program
         {
+            enum State {openOuter, openInner};
+
+            private State m_state;
             private string m_name;
             private PressureStatus m_innerPressure;
             private PressureStatus m_outerPressure;
             private PressureStatus m_airLockPressure;
+
             Airlock(string name)
             {
                 m_name = name;
-
+                m_state = State.openOuter;
+                m_innerPressure = new PressureStatus(groupPrefix + ":" + name + " " + innerPostfix);
+                m_outerPressure = new PressureStatus(groupPrefix + ":" + name + " " + outerPostfix);
+                m_airLockPressure = new PressureStatus(groupPrefix + ":" + name);
             }
 
             private class PressureStatus : Program
             {
                 private List<IMyAirVent> m_airVents;
-                PressureStatus(string groupName)
+                public PressureStatus(string groupName)
                 {
                     GridTerminalSystem.GetBlockGroupWithName(groupName).GetBlocksOfType<IMyAirVent>(m_airVents);
 
