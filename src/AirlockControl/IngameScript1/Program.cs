@@ -48,6 +48,8 @@ namespace IngameScript
         private const string innerPostfix = "inner";
         private const string outerPostfix = "outer";
         private const string controlPostfix = "";
+        private const float pressureDelta = 0.05f;
+
 
         public Program()
         {
@@ -87,12 +89,24 @@ namespace IngameScript
             // 
             // The method itself is required, but the arguments above
             // can be removed if not needed.
-            Airlock i_airLock = new Airlock(argument);
+            Echo("0");
+            NRFS._prog = this;
+            NRFS._term = GridTerminalSystem; 
+            Airlock i_airLock = new Airlock("ForwardHangar");
             Echo(i_airLock.PressureStates());
+            i_airLock.refreshDoorState();
         }
 
-        private class Airlock : MyGridProgram
+        public static class NRFS
         {
+            public static IMyGridTerminalSystem _term { get; set; } = null;
+            public static Program _prog { get; set; } = null;
+
+        }
+
+        public class Airlock
+        {
+
             private enum State {openOuter, openInner};
 
             private State m_state;
@@ -100,14 +114,61 @@ namespace IngameScript
             private PressureStatus m_innerPressure;
             private PressureStatus m_outerPressure;
             private PressureStatus m_airLockPressure;
+            private List<IMyAdvancedDoor> m_innerDoors = new List<IMyAdvancedDoor>();
+            private List<IMyAdvancedDoor> m_outerDoors = new List<IMyAdvancedDoor>();
 
             public Airlock(string name)
             {
                 m_name = name;
+                NRFS._prog.Echo("1");
                 m_state = State.openInner;
                 m_innerPressure = new PressureStatus(groupPrefix + ":" + name + " " + innerPostfix);
                 m_outerPressure = new PressureStatus(groupPrefix + ":" + name + " " + outerPostfix);
                 m_airLockPressure = new PressureStatus(groupPrefix + ":" + name);
+                NRFS._term.GetBlockGroupWithName(groupPrefix + ":" + name + " " + innerPostfix).GetBlocksOfType<IMyAdvancedDoor>(m_innerDoors);
+                NRFS._term.GetBlockGroupWithName(groupPrefix + ":" + name + " " + outerPostfix).GetBlocksOfType<IMyAdvancedDoor>(m_outerDoors);
+            }
+
+            public void refreshDoorState()
+            {
+                float innerPressure = 0;
+                float controlPressure = 0;
+                float outerPressure = 0;
+                m_innerPressure.GetOxygenLevel(ref innerPressure);
+                m_airLockPressure.GetOxygenLevel(ref controlPressure);
+                m_outerPressure.GetOxygenLevel(ref outerPressure);
+                if (innerPressure <= controlPressure + pressureDelta && innerPressure >= controlPressure - pressureDelta)
+                {
+                    foreach(IMyAdvancedDoor door in m_innerDoors)
+                    {
+                        door.Enabled = true;
+                        door.OpenDoor();
+                    }
+                }
+                else
+                {
+                    foreach (IMyAdvancedDoor door in m_innerDoors)
+                    {
+                        door.Enabled = false;
+                        door.CloseDoor();
+                    }
+                }
+                if (outerPressure <= controlPressure + pressureDelta && outerPressure >= controlPressure - pressureDelta)
+                {
+                    foreach (IMyAdvancedDoor door in m_outerDoors)
+                    {
+                        door.Enabled = true;
+                        door.OpenDoor();
+                    }
+                }
+                else
+                {
+                    foreach (IMyAdvancedDoor door in m_outerDoors)
+                    {
+                        door.Enabled = false;
+                        door.CloseDoor();
+                    }
+                }
             }
 
             public String PressureStates()
@@ -143,13 +204,17 @@ namespace IngameScript
                 return Outstring;
             }
 
-            private class PressureStatus : MyGridProgram
+            private class PressureStatus
             {
                 private List<IMyAirVent> m_airVents;
                 public PressureStatus(string groupName)
                 {
                     m_airVents = new List<IMyAirVent>();
-                    GridTerminalSystem.GetBlockGroupWithName(groupName).GetBlocksOfType<IMyAirVent>(m_airVents);
+                    List<IMyTerminalBlock> iBlocks = new List<IMyTerminalBlock>();
+                    IMyBlockGroup iGroup = NRFS._term.GetBlockGroupWithName(groupName);
+                    iGroup.GetBlocks(iBlocks);
+                    NRFS._prog.Echo(iBlocks.Count().ToString());
+                    iGroup.GetBlocksOfType<IMyAirVent>(m_airVents);
                 }
 
                 public bool GetOxygenLevel(ref float pressure)
