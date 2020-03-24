@@ -45,8 +45,8 @@ namespace IngameScript
         //CONSTANTS:
 
         private const string groupPrefix = "AAL";
-        private const string innerPostfix = "inner";
-        private const string outerPostfix = "outer";
+        private const string innerPostfix = " inner";
+        private const string outerPostfix = " outer";
         private const string controlPostfix = "";
         private const float pressureDelta = 0.05f;
 
@@ -94,7 +94,8 @@ namespace IngameScript
             NRFS._term = GridTerminalSystem; 
             Airlock i_airLock = new Airlock("ForwardHangar");
             Echo(i_airLock.PressureStates());
-            i_airLock.refreshDoorState();
+            i_airLock.HeartBeat();
+
         }
 
         public static class NRFS
@@ -109,27 +110,28 @@ namespace IngameScript
 
             private enum State {openOuter, openInner};
 
-            private State m_state;
+            private State m_state { get; set; } = State.openInner;
             private string m_name;
             private PressureStatus m_innerPressure;
             private PressureStatus m_outerPressure;
             private PressureStatus m_airLockPressure;
-            private List<IMyAdvancedDoor> m_innerDoors = new List<IMyAdvancedDoor>();
-            private List<IMyAdvancedDoor> m_outerDoors = new List<IMyAdvancedDoor>();
+            private DoorGroup m_innerDoors;
+            private DoorGroup m_outerDoors;
 
             public Airlock(string name)
             {
+                
                 m_name = name;
                 NRFS._prog.Echo("1");
                 m_state = State.openInner;
-                m_innerPressure = new PressureStatus(groupPrefix + ":" + name + " " + innerPostfix);
-                m_outerPressure = new PressureStatus(groupPrefix + ":" + name + " " + outerPostfix);
-                m_airLockPressure = new PressureStatus(groupPrefix + ":" + name);
-                NRFS._term.GetBlockGroupWithName(groupPrefix + ":" + name + " " + innerPostfix).GetBlocksOfType<IMyAdvancedDoor>(m_innerDoors);
-                NRFS._term.GetBlockGroupWithName(groupPrefix + ":" + name + " " + outerPostfix).GetBlocksOfType<IMyAdvancedDoor>(m_outerDoors);
+                m_innerPressure = new PressureStatus(groupPrefix + ":" + name + innerPostfix, false);
+                m_outerPressure = new PressureStatus(groupPrefix + ":" + name + outerPostfix, false);
+                m_airLockPressure = new PressureStatus(groupPrefix + ":" + name + controlPostfix, true);
+                m_innerDoors = new DoorGroup(groupPrefix + ":" + name + innerPostfix);
+                m_outerDoors = new DoorGroup(groupPrefix + ":" + name + outerPostfix);
             }
 
-            public void refreshDoorState()
+            private void refreshDoorState()
             {
                 float innerPressure = 0;
                 float controlPressure = 0;
@@ -137,38 +139,48 @@ namespace IngameScript
                 m_innerPressure.GetOxygenLevel(ref innerPressure);
                 m_airLockPressure.GetOxygenLevel(ref controlPressure);
                 m_outerPressure.GetOxygenLevel(ref outerPressure);
-                if (innerPressure <= controlPressure + pressureDelta && innerPressure >= controlPressure - pressureDelta)
+                if (controlPressure + pressureDelta >= innerPressure && innerPressure >= controlPressure - pressureDelta)
                 {
-                    foreach(IMyAdvancedDoor door in m_innerDoors)
-                    {
-                        door.Enabled = true;
-                        door.OpenDoor();
-                    }
+                    m_innerDoors.Open();
                 }
                 else
                 {
-                    foreach (IMyAdvancedDoor door in m_innerDoors)
-                    {
-                        door.Enabled = false;
-                        door.CloseDoor();
-                    }
+                    m_innerDoors.Close();
                 }
-                if (outerPressure <= controlPressure + pressureDelta && outerPressure >= controlPressure - pressureDelta)
+                if (controlPressure + pressureDelta >= outerPressure && outerPressure >= controlPressure - pressureDelta)
                 {
-                    foreach (IMyAdvancedDoor door in m_outerDoors)
-                    {
-                        door.Enabled = true;
-                        door.OpenDoor();
-                    }
+                    m_outerDoors.Open();
                 }
                 else
                 {
-                    foreach (IMyAdvancedDoor door in m_outerDoors)
-                    {
-                        door.Enabled = false;
-                        door.CloseDoor();
-                    }
+                    m_outerDoors.Close();
                 }
+            }
+
+            public void HeartBeat()
+            {
+                float targetPressure = 0;
+                float airLockPressure = 0;
+                m_airLockPressure.GetOxygenLevel(ref airLockPressure);
+                if(m_state == State.openOuter)
+                {
+                    m_outerPressure.GetOxygenLevel(ref targetPressure);
+                }
+                else
+                {
+                    m_innerPressure.GetOxygenLevel(ref targetPressure);
+                }
+                if(targetPressure >= airLockPressure)
+                {
+                    m_airLockPressure.RePressurize();
+                }
+                else
+                {
+                    m_airLockPressure.DePressurize();
+                }
+                this.refreshDoorState();
+                m_innerDoors.HeartBeat();
+                m_outerDoors.HeartBeat();
             }
 
             public String PressureStates()
@@ -204,17 +216,145 @@ namespace IngameScript
                 return Outstring;
             }
 
+            private class DoorGroup
+            {
+                private List<IMyDoor> doors = new List<IMyDoor>();
+
+                public enum DoorGroupState { open, opening, closed, closing, undef};
+                public DoorGroupState m_State { get; private set; } = DoorGroupState.undef;
+
+                public DoorGroup(string groupName)
+                {
+                    NRFS._term.GetBlockGroupWithName(groupName).GetBlocksOfType<IMyDoor>(doors);
+                    m_State = DoorGroupState.closing;
+
+                }
+
+                public void Open() => m_State = DoorGroupState.opening;
+                public void Close() => m_State = DoorGroupState.closing;
+
+                public void HeartBeat()
+                {
+                    switch (m_State){
+                        case DoorGroupState.opening:
+                            Boolean open = true;
+                            foreach(IMyDoor door in doors)
+                            {
+                                door.Enabled = true;
+                                door.OpenDoor();
+                                if (!(door.Status == DoorStatus.Open)) {
+                                    open = false;
+                                }
+                            }
+                            if (open)
+                            {
+                                m_State = DoorGroupState.open;
+                            }
+                            break;
+
+                        case DoorGroupState.closing:
+                            Boolean closed = true;
+                            foreach(IMyDoor door in doors)
+                            {
+                                door.Enabled = true;
+                                door.CloseDoor();
+                                if(door.Status != DoorStatus.Closed)
+                                {
+                                    closed = false;
+                                }
+                            }
+                            if (closed)
+                            {
+                                m_State = DoorGroupState.closed;
+                            }
+                            break;
+
+                        case DoorGroupState.closed:
+                            foreach(IMyDoor door in doors)
+                            {
+                                door.Enabled = false;
+                            }
+                            break;
+                    }
+
+
+                }
+
+            }
+
             private class PressureStatus
             {
+                public enum PressureState { dePressurizing, rePressurizing, unKnown }
+
+                public PressureState m_state { get; private set; } = PressureState.unKnown;
                 private List<IMyAirVent> m_airVents;
-                public PressureStatus(string groupName)
+                private Boolean m_controlled { get; } = false;
+                public PressureStatus(string groupName, Boolean controlled)
                 {
                     m_airVents = new List<IMyAirVent>();
+                    m_controlled = controlled;
                     List<IMyTerminalBlock> iBlocks = new List<IMyTerminalBlock>();
                     IMyBlockGroup iGroup = NRFS._term.GetBlockGroupWithName(groupName);
                     iGroup.GetBlocks(iBlocks);
                     NRFS._prog.Echo(iBlocks.Count().ToString());
                     iGroup.GetBlocksOfType<IMyAirVent>(m_airVents);
+                }
+
+                public void DePressurize()
+                {
+                    if (m_controlled) 
+                    {
+                        m_state = PressureState.dePressurizing;
+                    }
+                }
+
+                public void RePressurize()
+                {
+                    if (m_controlled)
+                    {
+                        m_state = PressureState.rePressurizing;
+                    }
+                }
+
+                public void HeartBeat()
+                {
+                    if (m_controlled)
+                    {
+                        switch (m_state)
+                        {
+                            case PressureState.dePressurizing:
+                                foreach(IMyAirVent vent in m_airVents)
+                                {
+                                    vent.Depressurize = true;
+                                }
+                                break;
+                            case PressureState.rePressurizing:
+                                foreach(IMyAirVent vent in m_airVents)
+                                {
+                                    vent.Depressurize = false;
+                                }
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        Boolean pressurizing = true;
+                        foreach(IMyAirVent vent in m_airVents)
+                        {
+                            if (vent.Depressurize)
+                            {
+                                pressurizing = false;
+                            }
+                        }
+                        if (pressurizing)
+                        {
+                            m_state = PressureState.dePressurizing;
+                        }
+                        else
+                        {
+                            m_state = PressureState.rePressurizing;
+                        }
+                    }
                 }
 
                 public bool GetOxygenLevel(ref float pressure)
